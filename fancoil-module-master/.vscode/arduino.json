@@ -1,0 +1,7 @@
+{
+    "configuration": "cpu=atmega328",
+    "board": "arduino:avr:nano",
+    "sketch": "fancoil-module-master.ino",
+    "programmer": "usbasp",
+    "port": "/dev/ttyUSB0"
+}
