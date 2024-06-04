@@ -10,15 +10,16 @@
 
 // #define ESPNOW_PERIPH
 // #define DEBUG
+// #define HALL_ENABLE_WHILE_DEBUG // Disables hall to be used as RX pin for SoftwareSerial
 
 #ifdef ESPNOW_PERIPH            // If this is a peripheral device
-#define ESP_NOW_I2C_ADDR 0x01   // I2C address of the ESP-NOW master
+#define ESP_NOW_I2C_ADDR 0x03   // I2C address of the ESP-NOW master
 #define MAX_NAME_LEN 20         // Maximum length of the device name
 #define MAX_DEVICES 10          // Maximum number of devices that can be connected to the master
 #endif
 
 #define DE_PIN 9                // Pin for DE/RE of RS485
-#define SLAVE_ID 0x01           // Modbus slave ID
+#define SLAVE_ID 0x04           // Modbus slave ID
 #define MODBUS_SPEED 38400      // Modbus speed
 
 // Pin definitions as per squematic
@@ -35,12 +36,7 @@
 #define ANALOG_IO_6 A6
 #define ANALOG_IO_7 A7
 
-// #define BME280_ADDR_1 0x76
-// #define BME280_ADDR_2 0x77
-
-#ifndef DEBUG
 #define DIGITAL_INPUT_1 3 // Digital input 3 coincides with TX pin of SoftwareSerial
-#endif
 #define DIGITAL_INPUT_2 4
 
 #define HALL_SENSOR_PIN 2
@@ -53,7 +49,17 @@
 ModbusRTUSlave modbus(Serial, DE_PIN);
 
 #ifdef DEBUG
-SoftwareSerial mySerial(2, 3); // RX, TX
+  #ifdef HALL_ENABLE_WHILE_DEBUG
+    #define RX_PIN DIGITAL_OUTPUT_1
+
+  #else
+    #define RX_PIN HALL_SENSOR_PIN
+
+  #endif
+  
+  #define TX_PIN DIGITAL_INPUT_1
+  SoftwareSerial mySerial(RX_PIN, TX_PIN); // RX, TX
+
 #endif
 
 OneWire oneWire(DS18B20_PIN);
@@ -104,16 +110,16 @@ typedef struct {
   airvent_sensors_t airvent_sensors;  
   uint16_t fanSpeed;                                   
   uint16_t nodes_alive;           
-  #ifdef ESPNOW_PERIPH
-  esp_now_hr_t esp_hr[MAX_DEVICES];
-  #endif
+  // #ifdef ESPNOW_PERIPH
+  // esp_now_hr_t esp_hr[MAX_DEVICES];
+  // #endif
 } __attribute__((packed)) fancoil_holdingRegisters_t;
 
 typedef struct {
   bool digitalInputs[2];           
-  #ifdef ESPNOW_PERIPH
-  esp_now_status_t device_status[MAX_DEVICES];  
-  #endif
+  // #ifdef ESPNOW_PERIPH
+  // esp_now_status_t device_status[MAX_DEVICES];  
+  // #endif
 
 } __attribute__((packed)) fancoil_discreteInputs_t;
 
@@ -124,30 +130,28 @@ typedef struct{
 
 typedef union{
   fancoil_holdingRegisters_t members;
-  uint16_t holdingRegisters[sizeof(fancoil_holdingRegisters_t)/2];
+  uint16_t holdingRegisters[10];
 } fancoil_holdingRegisters_union_t;
 
 typedef union{
   fancoil_discreteInputs_t members;
-  bool discreteInputs[sizeof(fancoil_discreteInputs_t)/2];
+  bool discreteInputs[2];
 } fancoil_holding_discreteInputs_union_t;
 
 typedef union{
   fancoil_coils_t members;
-  bool coils[sizeof(fancoil_coils_t)/2];
+  bool coils[5];
 } fancoil_holding_coils_union_t;
 
-volatile unsigned long lastHallTime = 0;
-volatile unsigned long rpm = 0;
+volatile int rpm = 0;
+volatile int lastCount = 0;
+volatile int count = 0;
 
 void hallSensorInterrupt();
 
 int main() {
   init();
 
-#ifdef DEBUG
-  mySerial.begin(9600);
-#endif
   // Initialize pins
   pinMode(LED_BUILTIN, OUTPUT);
 #ifndef DEBUG
@@ -160,8 +164,12 @@ int main() {
   pinMode(DIGITAL_OUTPUT_4, OUTPUT);
   pinMode(HALL_SENSOR_PIN, INPUT);
 
-  attachInterrupt(digitalPinToInterrupt(HALL_SENSOR_PIN), hallSensorInterrupt,
-                  FALLING);
+  #ifdef DEBUG
+  mySerial.begin(115200);
+  // mySerial.println("Fan coil module started");
+  #endif
+
+  // attachInterrupt(digitalPinToInterrupt(HALL_SENSOR_PIN), hallSensorInterrupt, FALLING);
 
 
   // Initialize sensors
@@ -173,56 +181,82 @@ int main() {
   fancoil_holding_discreteInputs_union_t fancoil_discreteInputs;
   fancoil_holding_coils_union_t fancoil_coils;
 
-  modbus.configureHoldingRegisters(fancoil_holdingRegisters.holdingRegisters, sizeof(fancoil_holdingRegisters_t));
-  modbus.configureDiscreteInputs(fancoil_discreteInputs.discreteInputs, sizeof(fancoil_discreteInputs_t));
-  modbus.configureCoils(fancoil_coils.coils, sizeof(fancoil_coils_t));
-
+  modbus.configureHoldingRegisters(fancoil_holdingRegisters.holdingRegisters, 10);
+  modbus.configureDiscreteInputs(fancoil_discreteInputs.discreteInputs, 2);
+  modbus.configureCoils(fancoil_coils.coils, 5);
   modbus.begin(SLAVE_ID, MODBUS_SPEED);
+
+  // Set up timers
+  long int timer1 = 0;
+  long int timer2 = 0;
+
+  // rpm 
+  float rpm = 543.31;
+  float prevRpm = 0.0;
 
   while (true) {
     modbus.poll();
 
-    // Read sensors //
-    ds18b20.requestTemperatures();
-    float temp[4];
-    for (int i = 0; i < 4; i++) {
-      temp[i] = ds18b20.getTempCByIndex(i);
+    // Run every second
+    if(millis() - timer1 > 1000){
+      timer1 = millis();
+      // Read sensors //
+      // ds18b20.requestTemperatures();
+      float temp[4];
+      for (int i = 0; i < 4; i++) {
+        // temp[i] = ds18b20.getTempCByIndex(i);
+        temp[i] = i*15.4;
+      }
+
+      fancoil_holdingRegisters.members.tube_sensors.coldOutputWater = (uint16_t)(temp[0]*100.0);
+      fancoil_holdingRegisters.members.tube_sensors.coldInputWater  = (uint16_t)(temp[1]*100.0);
+      fancoil_holdingRegisters.members.tube_sensors.hotInputWater   = (uint16_t)(temp[2]*100.0);
+      fancoil_holdingRegisters.members.tube_sensors.hotOutputWater  = (uint16_t)(temp[3]*100.0);
+
+      // Check if the sensor is connected
+      if (isnan(dht1.readTemperature())){
+        fancoil_holdingRegisters.members.airvent_sensors.airVentInputTemp = 0x125F;
+      }
+
+      if (isnan(dht1.readHumidity())){
+        fancoil_holdingRegisters.members.airvent_sensors.airVentInputHumidity = 0x234F;
+      }
+
+      if (isnan(dht2.readTemperature())){
+        fancoil_holdingRegisters.members.airvent_sensors.airVentOutputTemp = 0x345F;
+      }
+
+      if (isnan(dht2.readHumidity())){
+        fancoil_holdingRegisters.members.airvent_sensors.airVentOutputHumidity = 0x456F;
+      }
+      
+      // Read inputs
+  #ifndef DEBUG
+      fancoil_discreteInputs.members.digitalInputs[0] = (digitalRead(DIGITAL_INPUT_1) == LOW ? 0 : 1);
+  #endif
+      fancoil_discreteInputs.members.digitalInputs[1] = (digitalRead(DIGITAL_INPUT_1) == LOW ? 0 : 1);
+
+      // Update Outputs
+      digitalWrite(LED_BUILTIN,       fancoil_coils.members.LED_STATE);
+      digitalWrite(DIGITAL_OUTPUT_1,  fancoil_coils.members.digitalOutputs[0]);
+      digitalWrite(DIGITAL_OUTPUT_2,  fancoil_coils.members.digitalOutputs[1]);
+      digitalWrite(DIGITAL_OUTPUT_3,  fancoil_coils.members.digitalOutputs[2]);
+      digitalWrite(DIGITAL_OUTPUT_4,  fancoil_coils.members.digitalOutputs[3]);
+
+      fancoil_holdingRegisters.members.fanSpeed = (uint16_t)(rpm*100.0);
+      fancoil_holdingRegisters.members.nodes_alive = 987;
     }
 
-    fancoil_holdingRegisters.members.tube_sensors.coldOutputWater = (uint16_t)(temp[0]*100.0);
-    fancoil_holdingRegisters.members.tube_sensors.coldInputWater  = (uint16_t)(temp[1]*100.0);
-    fancoil_holdingRegisters.members.tube_sensors.hotInputWater   = (uint16_t)(temp[2]*100.0);
-    fancoil_holdingRegisters.members.tube_sensors.hotOutputWater  = (uint16_t)(temp[3]*100.0);
+    // if (millis() - timer2 > 100) {
+    //   timer2 = millis();
 
-    // Read for holding registers
-    fancoil_holdingRegisters.members.airvent_sensors.airVentInputTemp       = (uint16_t)(100.0*dht1.readTemperature());
-    fancoil_holdingRegisters.members.airvent_sensors.airVentInputHumidity   = (uint16_t)(100.0*dht1.readHumidity());
-    fancoil_holdingRegisters.members.airvent_sensors.airVentOutputTemp      = (uint16_t)(100.0*dht2.readTemperature());
-    fancoil_holdingRegisters.members.airvent_sensors.airVentOutputHumidity  = (uint16_t)(100.0*dht2.readHumidity());
-    
-    // Read inputs
-#ifndef DEBUG
-    fancoil_discreteInputs.members.digitalInputs[0] = (digitalRead(DIGITAL_INPUT_1) == LOW ? 0 : 1);
-#endif
-    fancoil_discreteInputs.members.digitalInputs[1] = (digitalRead(DIGITAL_INPUT_1) == LOW ? 0 : 1);
-
-    // Update Outputs
-    digitalWrite(LED_BUILTIN,       fancoil_coils.members.LED_STATE);
-    digitalWrite(DIGITAL_OUTPUT_1,  fancoil_coils.members.digitalOutputs[0]);
-    digitalWrite(DIGITAL_OUTPUT_2,  fancoil_coils.members.digitalOutputs[1]);
-    digitalWrite(DIGITAL_OUTPUT_3,  fancoil_coils.members.digitalOutputs[2]);
-    digitalWrite(DIGITAL_OUTPUT_4,  fancoil_coils.members.digitalOutputs[3]);
-
-    // Update fan speed
-    fancoil_holdingRegisters.members.fanSpeed = (uint16_t)(rpm*100.0);
-    fancoil_holdingRegisters.members.nodes_alive = 1;
-
-    delay(100);
+    //   rpm = ((count - lastCount) * 60.0 / .10)*0.2 + 0.8*prevRpm;
+    //   lastCount = count;
+    //   prevRpm = rpm;
+    // }
   }
 }
 
 void hallSensorInterrupt() {
-  unsigned long currentTime = millis();
-  rpm = 60000 / (currentTime - lastHallTime); // calculate RPM
-  lastHallTime = currentTime;
+  count += 1;
 }
