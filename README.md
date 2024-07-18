@@ -46,10 +46,18 @@ The following pin configuration should be adhered to for proper operation:
 | DIGITAL_OUTPUT_3          | 11             |
 | DIGITAL_OUTPUT_4          | 12             |
 
+## Schematic
+
+![image info](docs/images/Schematic_RS485-Fan-coil-module_2024-07-18-1.png)
+## PCB images
+
+![image info](docs/images/PCB_PCB_RS485-Fan-coil-module_2024-07-18-1-1.png)
+![image info](docs/images/PCB_PCB_RS485-Fan-coil-module_2024-07-18-5-1.png)
+
 ## Configuration Constants
 
 - `SLAVE_ID`: Modbus slave ID (default: `0x01`)
-- `MODBUS_SPEED`: Modbus communication speed (default: `38400` baud)
+- `MODBUS_SPEED`: Modbus communication speed (default: `115200` baud)
 
 ## How It Works
 
@@ -87,13 +95,13 @@ The following pin configuration should be adhered to for proper operation:
 
 | Address | Variable             | Type        | Options    |
 |---------|----------------------|-------------|------------|
-| 1       | Tubes cold OUT       | `float*100` | READ ONLY  |
-| 2       | Tubes cold IN        | `float*100` | READ ONLY  |
-| 3       | Tubes hot OUT        | `float*100` | READ ONLY  |
-| 4       | Tubes hot IN         | `float*100` | READ ONLY  |
+| 1       | Tubes cold IN        | `float*100` | READ ONLY  |
+| 2       | Tubes hot  IN        | `float*100` | READ ONLY  |
+| 3       | Tubes cold OUT       | `float*100` | READ ONLY  |
+| 4       | Tubes hot  OU        | `float*100` | READ ONLY  |
 | 5       | T air IN             | `float*100` | READ ONLY  |
-| 6       | H% air IN            | `float*100` | READ ONLY  |
-| 7       | T air OUT            | `float*100` | READ ONLY  |
+| 6       | T air OUT            | `float*100` | READ ONLY  |
+| 7       | H% air IN            | `float*100` | READ ONLY  |
 | 8       | H% air OUT           | `float*100` | READ ONLY  |
 | 9       | Fan Speed            | int         | READ ONLY  |
 | 10      | Nodes alive          | int         | READ ONLY  |
@@ -152,4 +160,3 @@ This project is licensed under the MIT License.
 
 ---
 
-Happy coding, and may your fan coil unit run smoothly and efficiently with this Arduino-based controller!

@@ -5,8 +5,7 @@
 #include <OneWire.h>
 #include <SoftwareSerial.h>
 #include <Wire.h>
-// #include <Adafruit_Sensor.h>
-// #include <Adafruit_BME280.h>
+
 
 // #define ESPNOW_PERIPH
 // #define DEBUG
@@ -19,8 +18,8 @@
 #endif
 
 #define DE_PIN 9                // Pin for DE/RE of RS485
-#define SLAVE_ID 0x04           // Modbus slave ID
-#define MODBUS_SPEED 38400      // Modbus speed
+#define SLAVE_ID 0x01           // Modbus slave ID
+#define MODBUS_SPEED 115200     // Modbus speed
 
 // Pin definitions as per squematic
 #define DS18B20_PIN 8
@@ -169,7 +168,7 @@ int main() {
   // mySerial.println("Fan coil module started");
   #endif
 
-  // attachInterrupt(digitalPinToInterrupt(HALL_SENSOR_PIN), hallSensorInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(HALL_SENSOR_PIN), hallSensorInterrupt, FALLING);
 
 
   // Initialize sensors
@@ -191,43 +190,51 @@ int main() {
   long int timer2 = 0;
 
   // rpm 
-  float rpm = 543.31;
+  float rpm = 123.45;
   float prevRpm = 0.0;
 
   while (true) {
     modbus.poll();
 
     // Run every second
-    if(millis() - timer1 > 1000){
+    if(millis() - timer1 > 100){
       timer1 = millis();
       // Read sensors //
-      // ds18b20.requestTemperatures();
+      ds18b20.requestTemperatures();
       float temp[4];
       for (int i = 0; i < 4; i++) {
-        // temp[i] = ds18b20.getTempCByIndex(i);
-        temp[i] = i*15.4;
+        temp[i] = ds18b20.getTempCByIndex(i);
+        // temp[i] = i*15.5;
       }
 
-      fancoil_holdingRegisters.members.tube_sensors.coldOutputWater = (uint16_t)(temp[0]*100.0);
-      fancoil_holdingRegisters.members.tube_sensors.coldInputWater  = (uint16_t)(temp[1]*100.0);
-      fancoil_holdingRegisters.members.tube_sensors.hotInputWater   = (uint16_t)(temp[2]*100.0);
+      fancoil_holdingRegisters.members.tube_sensors.coldInputWater  = (uint16_t)(temp[0]*100.0);
+      fancoil_holdingRegisters.members.tube_sensors.hotInputWater   = (uint16_t)(temp[1]*100.0);
+      fancoil_holdingRegisters.members.tube_sensors.coldOutputWater = (uint16_t)(temp[2]*100.0);
       fancoil_holdingRegisters.members.tube_sensors.hotOutputWater  = (uint16_t)(temp[3]*100.0);
 
       // Check if the sensor is connected
       if (isnan(dht1.readTemperature())){
-        fancoil_holdingRegisters.members.airvent_sensors.airVentInputTemp = 0x125F;
+        fancoil_holdingRegisters.members.airvent_sensors.airVentInputTemp = 0x123F;
+      }else{
+        fancoil_holdingRegisters.members.airvent_sensors.airVentInputTemp = (uint16_t)(dht1.readTemperature()*100.0);
       }
 
       if (isnan(dht1.readHumidity())){
-        fancoil_holdingRegisters.members.airvent_sensors.airVentInputHumidity = 0x234F;
+        fancoil_holdingRegisters.members.airvent_sensors.airVentOutputTemp = 0x234F;
+      }else{
+        fancoil_holdingRegisters.members.airvent_sensors.airVentOutputTemp = (uint16_t)(dht1.readHumidity()*100.0);
       }
 
       if (isnan(dht2.readTemperature())){
-        fancoil_holdingRegisters.members.airvent_sensors.airVentOutputTemp = 0x345F;
+        fancoil_holdingRegisters.members.airvent_sensors.airVentInputHumidity = 0x345F;
+      }else{
+        fancoil_holdingRegisters.members.airvent_sensors.airVentInputHumidity = (uint16_t)(dht2.readTemperature()*100.0);
       }
 
       if (isnan(dht2.readHumidity())){
         fancoil_holdingRegisters.members.airvent_sensors.airVentOutputHumidity = 0x456F;
+      }else{
+        fancoil_holdingRegisters.members.airvent_sensors.airVentOutputHumidity = (uint16_t)(dht2.readHumidity()*100.0);
       }
       
       // Read inputs
@@ -244,17 +251,20 @@ int main() {
       digitalWrite(DIGITAL_OUTPUT_4,  fancoil_coils.members.digitalOutputs[3]);
 
       fancoil_holdingRegisters.members.fanSpeed = (uint16_t)(rpm*100.0);
-      fancoil_holdingRegisters.members.nodes_alive = 987;
+      fancoil_holdingRegisters.members.nodes_alive = 888;
     }
 
-    // if (millis() - timer2 > 100) {
-    //   timer2 = millis();
+    if (millis() - timer2 > 100) {
+      timer2 = millis();
 
-    //   rpm = ((count - lastCount) * 60.0 / .10)*0.2 + 0.8*prevRpm;
-    //   lastCount = count;
-    //   prevRpm = rpm;
-    // }
+      rpm = ((count - lastCount) * 60.0 / .10)*0.2 + 0.8*prevRpm;
+      lastCount = count;
+      prevRpm = rpm;
+    }
+
+    delay(10);
   }
+  
 }
 
 void hallSensorInterrupt() {

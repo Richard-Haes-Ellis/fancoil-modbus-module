@@ -3,5 +3,5 @@
     "board": "arduino:avr:nano",
     "sketch": "fancoil-module-slave.ino",
     "programmer": "usbasp",
-    "port": "/dev/ttyS0"
+    "port": "/dev/ttyUSB0"
 }
