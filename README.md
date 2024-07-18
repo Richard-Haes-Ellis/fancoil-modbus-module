@@ -22,6 +22,11 @@ Ensure you have the following libraries installed in your Arduino IDE:
 - `SoftwareSerial.h`
 - `Wire.h`
 
+
+
+
+
+
 ## Pin Configuration
 
 The following pin configuration should be adhered to for proper operation:
